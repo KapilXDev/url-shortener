@@ -108,6 +108,22 @@ click:<shortCode>
 
 ---
 
+--- 
+
+# 📊 Observability & Metrics
+
+The service exposes **Prometheus metrics** via Spring Boot Actuator for monitoring:
+
+| Metric | Description |
+|--------|-------------|
+| `redirect_latency_seconds` | Time taken to process a redirect request |
+| `redirect_requests_total` | Total number of redirect requests |
+| `cache_hits_total` | Number of cache hits in Redis |
+| `cache_misses_total` | Number of cache misses in Redis |
+| `rate_limited_requests_total` | Number of requests blocked due to rate limiting |
+
+Metrics endpoint:
+
 # 🔥 Key Features
 
 | Feature | Implementation |
@@ -213,6 +229,14 @@ mvn spring-boot:run
 - Uses **Redis cache-first strategy**
 - Request coalescing prevents database overload
 
+### Rate Limiting
+
+- Redis-based **token bucket per IP**
+- Default limit: **100 requests/minute per IP**
+- Exceeding limit returns **HTTP 429 Too Many Requests**
+- Ensures fairness and protects the service from abuse
+- Metrics tracked in Prometheus: `rate_limited_requests_total`
+
 ### Non-Critical Path
 
 - Click analytics processed **asynchronously**
@@ -231,6 +255,8 @@ Possible production upgrades:
 - Prometheus + Grafana monitoring
 - Circuit breakers for DB and cache calls
 - PostgreSQL read replicas
+- Prometheus + Grafana monitoring (already implemented)
+- Rate limiting per IP using Redis (already implemented)
 
 ---
 
