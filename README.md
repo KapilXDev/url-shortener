@@ -221,6 +221,16 @@ mvn spring-boot:run
 
 ---
 
+### Click Flush Worker
+
+- Scheduled job runs every **30 seconds**
+- Reads click counters from Redis (`click:<shortCode>`)
+- Updates PostgreSQL `click_count` for each URL
+- Deletes Redis keys after flush
+- Ensures **eventual consistency** for analytics
+
+---
+
 # 🏗 Future Improvements
 
 Possible production upgrades:
