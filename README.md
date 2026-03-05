@@ -65,6 +65,9 @@ The redirect path must be **fast and resilient**.
 
 - Redis locking prevents multiple threads hitting the database simultaneously
 
+**Distributed Locking with Redisson**
+- Ensures single thread updates Redis cache and DB across multiple instances, preventing cache stampedes in a distributed deployment.
+
 ---
 
 # 📊 Non-Critical Path (Analytics Flow)
@@ -121,7 +124,8 @@ The service exposes **Prometheus metrics** via Spring Boot Actuator for monitori
 | `cache_hits_total` | Number of cache hits in Redis |
 | `cache_misses_total` | Number of cache misses in Redis |
 | `rate_limited_requests_total` | Number of requests blocked due to rate limiting |
-
+| `locks_acquired_total` | Number of distributed locks acquired
+| `locks_failed_total` | Number of lock acquisition failures
 Metrics endpoint:
 
 # 🔥 Key Features
@@ -134,6 +138,7 @@ Metrics endpoint:
 | Async Click Tracking | `@Async` Redis increment |
 | Click Flush Worker | Scheduled job updates database |
 | Eventual Consistency | Redis counters periodically persisted to DB |
+| Distributed Locking | `RedissonClient` locks for cache stampede and multi-instance safety |
 
 ---
 
