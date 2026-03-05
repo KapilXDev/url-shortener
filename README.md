@@ -221,6 +221,26 @@ mvn spring-boot:run
 
 ---
 
+## Observability (Prometheus + Micrometer)
+
+The system exposes metrics via Spring Boot Actuator and Prometheus.
+
+Metrics include:
+
+redirect_requests_total
+cache_hits_total
+cache_misses_total
+redirect_latency_seconds
+redis_command_latency
+db_query_latency
+worker_execution_latency
+
+Metrics endpoint:
+
+http://localhost:8080/actuator/prometheus
+
+---
+
 # 🏗 Future Improvements
 
 Possible production upgrades:
