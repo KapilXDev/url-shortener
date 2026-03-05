@@ -1,5 +1,6 @@
 package com.example.urlshortener.service;
 
+import com.example.urlshortener.metrics.MetricsService;
 import com.example.urlshortener.model.Url;
 import com.example.urlshortener.repository.UrlRepository;
 import com.example.urlshortener.util.Base62;
@@ -20,6 +21,7 @@ public class UrlService {
 
     private final UrlRepository urlRepository;
     private final StringRedisTemplate redisTemplate;
+    private final MetricsService metricsService;
 
     private static final long CACHE_TTL_HOURS = 24;
     private static final long LOCK_TTL_SECONDS = 5;
@@ -56,54 +58,64 @@ public class UrlService {
     @Bulkhead(name = "redirectService", type = Bulkhead.Type.SEMAPHORE)
     public String getOriginalUrl(String shortCode) {
 
-        // 1️⃣ Check Redis cache first
-        String cached = redisTemplate.opsForValue().get(shortCode);
-        if (cached != null) {
-            incrementClickAsync(shortCode); // Async increment in Redis
-            return cached;
-        }
+        return metricsService.getRedirectTimer().record(() -> {
 
-        // 2️⃣ Cache miss → Coalescing to prevent DB stampede
-        String lockKey = "lock:" + shortCode;
-        Boolean acquired = redisTemplate.opsForValue()
-                .setIfAbsent(lockKey, "1", LOCK_TTL_SECONDS, TimeUnit.SECONDS);
+            metricsService.incrementRedirect();
 
-        if (Boolean.TRUE.equals(acquired)) {
-            try {
-                // Single thread hits DB
-                Url url = urlRepository.findByShortCode(shortCode)
-                        .orElseThrow(() -> new RuntimeException("URL not found"));
+            // 1️⃣ Check Redis cache first
+            String cached = redisTemplate.opsForValue().get(shortCode);
+            if (cached != null) {
+                incrementClickAsync(shortCode); // Async increment in Redis
+                metricsService.incrementCacheHit();
+                return cached;
+            }
 
-                // Optional expiry check
-                if (url.getExpiresAt() != null &&
-                        url.getExpiresAt().isBefore(LocalDateTime.now())) {
-                    throw new RuntimeException("URL expired");
+            // 2️⃣ Cache miss → Coalescing to prevent DB stampede
+            metricsService.incrementCacheMiss();
+            String lockKey = "lock:" + shortCode;
+            Boolean acquired = redisTemplate.opsForValue()
+                    .setIfAbsent(lockKey, "1", LOCK_TTL_SECONDS, TimeUnit.SECONDS);
+
+            if (Boolean.TRUE.equals(acquired)) {
+                try {
+                    // Single thread hits DB
+                    Url url = urlRepository.findByShortCode(shortCode)
+                            .orElseThrow(() -> new RuntimeException("URL not found"));
+
+                    // Optional expiry check
+                    if (url.getExpiresAt() != null &&
+                            url.getExpiresAt().isBefore(LocalDateTime.now())) {
+                        throw new RuntimeException("URL expired");
+                    }
+
+                    // Cache result in Redis
+                    redisTemplate.opsForValue().set(shortCode, url.getOriginalUrl(),
+                            CACHE_TTL_HOURS, TimeUnit.HOURS);
+
+                    // Async increment click in Redis
+                    incrementClickAsync(shortCode);
+
+                    return url.getOriginalUrl();
+
+                } finally {
+                    // Release lock
+                    redisTemplate.delete(lockKey);
                 }
 
-                // Cache result in Redis
-                redisTemplate.opsForValue().set(shortCode, url.getOriginalUrl(),
-                        CACHE_TTL_HOURS, TimeUnit.HOURS);
-
-                // Async increment click in Redis
-                incrementClickAsync(shortCode);
-
-                return url.getOriginalUrl();
-
-            } finally {
-                // Release lock
-                redisTemplate.delete(lockKey);
+            } else {
+                // Other threads wait briefly and retry cache
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException ignored) {
+                }
+                String retry = redisTemplate.opsForValue().get(shortCode);
+                if (retry != null) {
+                    incrementClickAsync(shortCode);
+                    return retry;
+                }
+                throw new RuntimeException("High traffic. Please retry.");
             }
-
-        } else {
-            // Other threads wait briefly and retry cache
-            try { Thread.sleep(50); } catch (InterruptedException ignored) {}
-            String retry = redisTemplate.opsForValue().get(shortCode);
-            if (retry != null) {
-                incrementClickAsync(shortCode);
-                return retry;
-            }
-            throw new RuntimeException("High traffic. Please retry.");
-        }
+        });
     }
 
     // =========================

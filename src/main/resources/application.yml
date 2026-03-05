@@ -29,3 +29,12 @@ resilience4j:
       redirectService:
         maxConcurrentCalls: 200
         maxWaitDuration: 0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus,health,metrics
+  endpoint:
+    prometheus:
+      enabled: true
